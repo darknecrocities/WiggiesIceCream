@@ -5,7 +5,113 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from io import BytesIO
+import firebase_admin
+from firebase_admin import credentials
 import re
+import streamlit as st
+from datetime import datetime
+import json
+import requests
+
+USER_CREDENTIALS = {"admin": "password123"}
+def signout():
+    st.session_state.signed_in = False  # Explicitly set signed_in to False
+    st.session_state.signedout = True  # This flag can be used to show that the user is signed out
+    st.session_state.username = ''  # Clear username session state
+    st.session_state.useremail = ''  # Clear email session state
+    st.success('You have been signed out successfully!')
+    st.session_state.signedout = False  # Reset signed-out flag to prevent multiple redirects
+    st.session_state.signed_in = False  # Ensure that the user is not signed in
+    st.rerun()
+
+# Sign Up with email and password
+def sign_up_with_email_and_password(email, password, username=None, return_secure_token=True):
+    try:
+        rest_api_url = "https://identitytoolkit.googleapis.com/v1/accounts:signUp"
+        payload = {
+            "email": email,
+            "password": password,
+            "returnSecureToken": return_secure_token
+        }
+        if username:
+            payload["displayName"] = username
+        payload = json.dumps(payload)
+        r = requests.post(rest_api_url, params={"key": "AIzaSyAdgvM_-wj2IaC8gob-LGXfvuyaw6fRkjM"}, data=payload)
+        
+        if r.status_code == 200:
+            st.success("Account Created! You can now sign in.")
+            return r.json()['email']
+        elif r.status_code == 400:
+            error_message = r.json().get('error', {}).get('message')
+            if 'EMAIL_EXISTS' in error_message:
+                st.warning('This email address is already in use. Please use a different email address.')
+            else:
+                st.warning(f'Error: {error_message}')
+        else:
+            st.warning(r.json())
+    except Exception as e:
+        st.warning(f'Signup failed: {e}')
+
+
+# Sign In with email and password
+def sign_in_with_email_and_password(email=None, password=None, return_secure_token=True):
+    rest_api_url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
+    try:
+        payload = {
+            "returnSecureToken": return_secure_token,
+            "email": email,
+            "password": password
+        }
+        payload = json.dumps(payload)
+        r = requests.post(rest_api_url, params={"key": "AIzaSyAdgvM_-wj2IaC8gob-LGXfvuyaw6fRkjM"}, data=payload)
+        if r.status_code == 200:
+            data = r.json()
+            user_info = {
+                'email': data['email'],
+                'username': data.get('displayName')
+            }
+            st.session_state.signedout = False
+            st.session_state.username = user_info['username']
+            st.session_state.useremail = user_info['email']
+            st.success(f"Welcome {st.session_state.username}!")
+            # Now, trigger a rerun by setting a flag
+            st.session_state.signed_in = True
+        else:
+            error_message = r.json().get('error', {}).get('message', 'Unknown error')
+            st.error(f"Sign-in failed: {error_message}")
+    except Exception as e:
+        st.warning(f'Signin failed: {e}')
+
+# Password Reset Function
+def reset_password(email):
+    try:
+        rest_api_url = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
+        payload = {
+            "email": email,
+            "requestType": "PASSWORD_RESET"
+        }
+        payload = json.dumps(payload)
+        r = requests.post(rest_api_url, params={"key": "AIzaSyAdgvM_-wj2IaC8gob-LGXfvuyaw6fRkjM"}, data=payload)
+        if r.status_code == 200:
+            return True, "Reset email Sent"
+        else:
+            error_message = r.json().get('error', {}).get('message')
+            return False, error_message
+    except Exception as e:
+        return False, str(e)
+
+# Function to handle password reset (forgot password)
+def forget_password():
+    email = st.text_input('Enter your email for password reset', key="reset_email")
+    if st.button('Send Password Reset Email'):
+        if email:
+            success, message = reset_password(email)
+            if success:
+                st.success(message)
+            else:
+                st.error(f'Error: {message}')
+        else:
+            st.warning('Please enter your email address.')
 
 def load_css():
     with open("frontend/styles.css") as f:
@@ -343,50 +449,90 @@ def export_to_excel():
         st.error(f"Error during export: {e}")
 # Call the export function in your main function
 def main():
-    st.title("Wiggies Management System")
+    st.set_page_config(page_title="Inventory Dashboard", layout="wide")
+    st.title("🍧 Wiggies Management System")
 
-    # Load CSS for background image
-    load_css()
+    if "signedout" not in st.session_state:
+        st.session_state.signedout = False
+    if "signed_in" not in st.session_state:
+        st.session_state.signed_in = False
 
-    # Sidebar for navigation
-    menu = ["Add Sale", "Edit Sale", "View Sales", "View Sales by Date Range", "View Insights", "Export to Excel", "Delete Sale"]
-    choice = st.sidebar.selectbox("Select an option", menu)
+    if not st.session_state.signedout and not st.session_state.signed_in:
+        menu = ["Sign In", "Sign Up", "Forgot Password"]
+        choice = st.sidebar.selectbox("Menu", menu)
 
-    if choice == "Add Sale":
-        st.subheader("Add a Sale")
-        product_name = st.selectbox("Select Product", get_products()['item'].tolist())
-        quantity = st.number_input("Quantity", min_value=1, value=1)
-        date = st.date_input("Date of Sale")
-        if st.button("Add Sale"):
-            add_sale(product_name, quantity, date)
+        if choice == "Sign In":
+            st.subheader("🔑 Sign In")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            if st.button("Sign In"):
+                sign_in_with_email_and_password(email=email, password=password)
+                
+                # If successfully signed in, rerun to refresh the state
+                if st.session_state.get("signed_in", False):
+                    st.rerun()  # It will rerun the app after sign-in
 
-    elif choice == "Edit Sale":
-        st.subheader("Edit an Existing Sale")
-        sale_id = st.number_input("Sale ID", min_value=1)
-        new_quantity = st.number_input("New Quantity", min_value=1)
-        new_date = st.date_input("New Date of Sale")
-        if st.button("Update Sale"):
-            edit_sale(sale_id, new_quantity, new_date)
+        elif choice == "Sign Up":
+            st.subheader("🔐 Sign Up")
+            email = st.text_input("Email")
+            password = st.text_input("Password", type="password")
+            username = st.text_input("Username")
+            if st.button("Sign Up"):
+                sign_up_with_email_and_password(email=email, password=password, username=username)
+                st.success("Account Created! You can now sign in.")
 
-    elif choice == "View Sales":
-        st.subheader("View Sales Records")
-        sales_data = get_sales()
-        st.dataframe(sales_data)
+        elif choice == "Forgot Password":
+            st.subheader("🔒 Reset Password")
+            forget_password()  # Call the forget password function
+    
+    elif st.session_state.signed_in:
+        st.title("Wiggies Management System")
+        # Load CSS for background image
+        load_css()
 
-    elif choice == "View Sales by Date Range":
-        view_sales_by_date_range()
+        # Sidebar for navigation
+        menu = ["Add Sale", "Edit Sale", "View Sales", "View Sales by Date Range", "View Insights", "Export to Excel", "Delete Sale", "Sign Out"]
+        choice = st.sidebar.selectbox("Select an option", menu)
 
-    elif choice == "View Insights":
-        view_insights()
+        if choice == "Add Sale":
+            st.subheader("Add a Sale")
+            product_name = st.selectbox("Select Product", get_products()['item'].tolist())
+            quantity = st.number_input("Quantity", min_value=1, value=1)
+            date = st.date_input("Date of Sale")
+            if st.button("Add Sale"):
+                add_sale(product_name, quantity, date)
 
-    elif choice == "Export to Excel":
-        export_to_excel()
+        elif choice == "Edit Sale":
+            st.subheader("Edit an Existing Sale")
+            sale_id = st.number_input("Sale ID", min_value=1)
+            new_quantity = st.number_input("New Quantity", min_value=1)
+            new_date = st.date_input("New Date of Sale")
+            if st.button("Update Sale"):
+                edit_sale(sale_id, new_quantity, new_date)
 
-    elif choice == "Delete Sale":
-        st.subheader("Delete a Sale")
-        sale_id = st.number_input("Enter Sale ID to Delete", min_value=1)
-        if st.button("Delete Sale"):
-            delete_sale(sale_id)
+        elif choice == "View Sales":
+            st.subheader("View Sales Records")
+            sales_data = get_sales()
+            st.dataframe(sales_data)
+
+        elif choice == "View Sales by Date Range":
+            view_sales_by_date_range()
+
+        elif choice == "View Insights":
+            view_insights()
+
+        elif choice == "Export to Excel":
+            export_to_excel()
+
+        elif choice == "Delete Sale":
+            st.subheader("Delete a Sale")
+            sale_id = st.number_input("Enter Sale ID to Delete", min_value=1)
+            if st.button("Delete Sale"):
+                delete_sale(sale_id)
+        
+        elif choice == "Sign Out":
+            signout()
+            st.rerun()
 
 if __name__ == '__main__':
     initialize_database()
