@@ -18,7 +18,7 @@ import time
 USER_CREDENTIALS = {"admin": "password123"} # For testing only
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate('cloud/wiggies-523d3-firebase-adminsdk-33wh9-c1eeb8efec.json')
+    cred = credentials.Certificate('wiggies-523d3-firebase-adminsdk-33wh9-c1eeb8efec.json')
     firebase_admin.initialize_app(cred, {
         'databaseURL': 'https://wiggies-523d3-default-rtdb.asia-southeast1.firebasedatabase.app/'
     })
