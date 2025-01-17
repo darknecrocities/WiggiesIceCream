@@ -414,19 +414,9 @@ def view_sales_by_date_range():
     sql_df = pd.read_sql_query(query, conn, params=(start_date.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
     conn.close()
 
-    # Fetch data from Firebase
-    firebase_df = fetch_firebase_data()
-    if not firebase_df.empty:
-        # Convert Firebase 'date' column to datetime
-        firebase_df['date'] = pd.to_datetime(firebase_df['date'])
-
-        # Filter the data by date range
-        firebase_filtered_df = firebase_df[(firebase_df['date'] >= start_date) & (firebase_df['date'] <= end_date)]
-        st.subheader("Sales Data from Cloud")
-        st.write(firebase_filtered_df)
-
+    # Fetch data from Database
     if not sql_df.empty:
-        st.subheader("Sales Data from SQL Database")
+        st.subheader("Sales Data from Wiggies Database")
         st.write(sql_df)
 
 
