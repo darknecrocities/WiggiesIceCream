@@ -6,3 +6,7 @@ seaborn
 firebase-admin
 google-cloud-firestore
 requests
+requests
+google-auth
+google-auth-oauthlib
+google-api-python-client
